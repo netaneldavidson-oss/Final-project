@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+<meta charset="UTF-8">
+<title>משחק זיכרון</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    direction: rtl;
+    overflow: hidden;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+    margin-bottom: 16px;
+    color: #e2b96f;
+  }
+
+  #hub {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    max-width: 700px;
+    width: 100%;
+  }
+
+  .hub-card {
+    background: #16213e;
+    border: 2px solid #0f3460;
+    border-radius: 16px;
+    padding: 20px 12px;
+    text-align: center;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform .2s, border-color .2s, box-shadow .2s;
+    user-select: none;
+  }
+  .hub-card:hover {
+    transform: translateY(-4px);
+    border-color: #e2b96f;
+    box-shadow: 0 8px 24px rgba(226,185,111,.25);
+  }
+  .hub-card span { display: block; font-size: 2rem; margin-bottom: 6px; }
+
+  #level-info {
+    text-align: center;
+    font-size: 1rem;
+    color: #aaa;
+    margin-bottom: 10px;
+  }
+
+  #win-banner {
+    display: none;
+    text-align: center;
+    background: #e2b96f;
+    color: #1a1a2e;
+    font-size: 1.2rem;
+    font-weight: bold;
+    padding: 10px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    animation: pop .3s ease;
+  }
+  @keyframes pop {
+    0%   { transform: scale(.8); opacity: 0; }
+    100% { transform: scale(1);  opacity: 1; }
+  }
+
+  #game-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  #grid {
+    display: grid;
+    gap: 8px;
+    justify-content: center;
+    align-content: center;
+  }
+
+  .card { cursor: pointer; perspective: 600px; }
+
+  .card-inner {
+    width: 100%; height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform .45s ease;
+    border-radius: 10px;
+  }
+  .card.open .card-inner,
+  .card.matched .card-inner { transform: rotateY(180deg); }
+
+  .card-front, .card-back {
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+
+  .card-front {
+    background: linear-gradient(135deg, #0f3460, #16213e);
+    border: 2px solid #0f3460;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    color: #2a4a7f;
+  }
+  .card-front::after { content: "?"; }
+
+  .card-back {
+    transform: rotateY(180deg);
+    background: #fff;
+    border: 2px solid #e2b96f;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card-back img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  .card.matched .card-back {
+    border-color: #4caf50;
+    background: #e8f5e9;
+  }
+
+  #back-btn {
+    display: block;
+    margin: 12px auto 0;
+    padding: 8px 24px;
+    background: transparent;
+    border: 2px solid #e2b96f;
+    color: #e2b96f;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background .2s, color .2s;
+    flex-shrink: 0;
+  }
+  #back-btn:hover { background: #e2b96f; color: #1a1a2e; }
+</style>
+</head>
+<body>
+
+<h1>🃏 משחק זיכרון</h1>
+<div id="hub"></div>
+
+<div id="game-area" style="display:none">
+  <div id="win-banner"></div>
+  <div id="level-info"></div>
+  <div id="grid"></div>
+  <button id="back-btn">⬅️ חזרה לתפריט</button>
+</div>
+
+<script src="./categoryLinks.js"></script>
+<script>
+const CATEGORIES = [
+  { id: "colors",    label: "צבעים",          emoji: "🎨" },
+  { id: "countries", label: "דגלים",           emoji: "🌍" },
+  { id: "soccer",    label: "כדורגל",          emoji: "⚽" },
+  { id: "people",    label: "אנשים מפורסמים", emoji: "🌟" },
+  { id: "animals",   label: "חיות",            emoji: "🐾" },
+];
+
+const hub = document.getElementById("hub");
+CATEGORIES.forEach(cat => {
+  const d = document.createElement("div");
+  d.className = "hub-card";
+  d.innerHTML = `<span>${cat.emoji}</span>${cat.label}`;
+  d.onclick = () => startCategory(cat.id);
+  hub.appendChild(d);
+});
+
+document.getElementById("back-btn").onclick = () => {
+  document.getElementById("game-area").style.display = "none";
+  document.getElementById("hub").style.display = "grid";
+  document.getElementById("win-banner").style.display = "none";
+};
+
+function getItems(type) {
+  if (type === "colors")    return { items: baseColors,  isColor: true  };
+  if (type === "countries") return { items: countries,   isColor: false };
+  if (type === "soccer")    return { items: soccerTeams, isColor: false };
+  if (type === "people")    return { items: people,      isColor: false };
+  if (type === "animals")   return { items: animals,     isColor: false };
+  return { items: [], isColor: false };
+}
+
+function getLevels(total) {
+  const levels = [];
+  for (let n = 6; n <= total; n += 6) levels.push(n);
+  if (!levels.length || levels[levels.length-1] !== total) levels.push(total);
+  return levels;
+}
+
+let currentType, currentLevels, currentLevelIndex;
+
+function startCategory(type) {
+  currentType = type;
+  currentLevelIndex = 0;
+  const { items } = getItems(type);
+  currentLevels = getLevels(items.length);
+  document.getElementById("hub").style.display = "none";
+  document.getElementById("game-area").style.display = "flex";
+  loadGame();
+}
+
+function loadGame() {
+  const pairs = currentLevels[currentLevelIndex];
+  const { items, isColor } = getItems(currentType);
+  const deck = [...items.slice(0, pairs), ...items.slice(0, pairs)].sort(() => Math.random() - 0.5);
+
+  document.getElementById("win-banner").style.display = "none";
+  document.getElementById("level-info").textContent = `שלב ${currentLevelIndex + 1}  •  ${pairs} זוגות`;
+
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+
+  // פריסה אופקית: יותר עמודות מאשר שורות
+  const cols = Math.ceil(Math.sqrt(deck.length * 1.6));
+  const rows = Math.ceil(deck.length / cols);
+
+  // גודל כרטיס לפי המסך
+  const availW = window.innerWidth - 32;
+  const availH = window.innerHeight - 150;
+  const cardSize = Math.min(
+    Math.floor((availW - (cols - 1) * 8) / cols),
+    Math.floor((availH - (rows - 1) * 8) / rows),
+    90
+  );
+
+  grid.style.gridTemplateColumns = `repeat(${cols}, ${cardSize}px)`;
+
+  let first = null, lock = false, matched = 0;
+
+  deck.forEach(val => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.dataset.val = val;
+    card.style.width = card.style.height = cardSize + "px";
+
+    card.innerHTML = `
+      <div class="card-inner">
+        <div class="card-front"></div>
+        <div class="card-back">${
+          isColor
+            ? `<div style="width:100%;height:100%;background:${val}"></div>`
+            : `<img src="${val}" alt="card" loading="lazy">`
+        }</div>
+      </div>`;
+
+    card.onclick = () => {
+      if (lock || card.classList.contains("open") || card.classList.contains("matched")) return;
+      card.classList.add("open");
+      if (!first) { first = card; return; }
+
+      if (first.dataset.val === val) {
+        card.classList.add("matched");
+        first.classList.add("matched");
+        first = null;
+        matched += 2;
+        if (matched === deck.length) {
+          setTimeout(() => {
+            currentLevelIndex++;
+            const banner = document.getElementById("win-banner");
+            if (currentLevelIndex < currentLevels.length) {
+              banner.textContent = "🎉 כל הכבוד! עולים שלב!";
+              banner.style.display = "block";
+              setTimeout(loadGame, 1200);
+            } else {
+              banner.textContent = "🏆 סיימת את כל השלבים!";
+              banner.style.display = "block";
+            }
+          }, 500);
+        }
+      } else {
+        lock = true;
+        const prev = first;
+        first = null;
+        setTimeout(() => {
+          card.classList.remove("open");
+          prev.classList.remove("open");
+          lock = false;
+        }, 900);
+      }
+    };
+
+    grid.appendChild(card);
+  });
+}
+</script>
+</body>
+</html>
